@@ -5,9 +5,8 @@ const {
   getStudentById,
   createStudent,
   updateStudent,
-  deactivateStudent,
-  updateStudentClass,
-  updateStudentForm
+  deleteStudent,
+  getStudentsByClass
 } = require('../controllers/studentController');
 
 const router = express.Router();
@@ -20,9 +19,9 @@ router.route('/')
 router.route('/:id')
   .get(protect, getStudentById)  // Both admin and teacher can view specific student
   .put(protect, admin, updateStudent)  // Only admin can update
-  .delete(protect, admin, deactivateStudent);  // Only admin can deactivate
+  .delete(protect, admin, deleteStudent);  // Only admin can delete
 
-router.route('/:id/class').put(protect, admin, updateStudentClass);  // Only admin can update class
-router.route('/:id/form').put(protect, admin, updateStudentForm);  // Only admin can update form
+router.route('/class/:classId')
+  .get(protect, getStudentsByClass);  // Get students by class
 
 module.exports = router;

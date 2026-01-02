@@ -1,31 +1,27 @@
 const express = require('express');
 const { protect, admin, teacher, canAccessClass, canAccessStudent } = require('../middleware/auth');
 const {
-  getAssessmentsByClass,
-  getAssessmentsByStudent,
+  getAssessments,
+  getAssessmentById,
   createAssessment,
   updateAssessment,
   deleteAssessment,
-  getAssessmentStats
+  getAssessmentsByStudentAndSubject
 } = require('../controllers/assessmentController');
 
 const router = express.Router();
 
 // All routes are protected
 router.route('/')
+  .get(protect, getAssessments)  // Both admin and teacher can view assessments
   .post(protect, createAssessment);  // Both admin and teacher can create assessments
 
-router.route('/class/:classId')
-  .get(protect, getAssessmentsByClass);  // Both admin and teacher can view assessments for a class
-
-router.route('/student/:studentId')
-  .get(protect, getAssessmentsByStudent);  // Both admin and teacher can view assessments for a student
-
 router.route('/:id')
+  .get(protect, getAssessmentById)  // Both admin and teacher can view specific assessment
   .put(protect, updateAssessment)  // Both admin and teacher can update
   .delete(protect, admin, deleteAssessment);  // Only admin can delete
 
-router.route('/class/:classId/stats')
-  .get(protect, getAssessmentStats);  // Both admin and teacher can view stats
+router.route('/student/:studentId/subject/:subject')
+  .get(protect, getAssessmentsByStudentAndSubject);  // Get assessments by student and subject
 
 module.exports = router;

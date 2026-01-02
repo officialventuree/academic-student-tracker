@@ -1,35 +1,35 @@
 const express = require('express');
 const { protect, admin, teacher } = require('../middleware/auth');
 const {
-  getAssignmentsByClass,
-  getAssignmentsByStudent,
+  getAssignments,
+  getAssignmentById,
   createAssignment,
   updateAssignment,
   deleteAssignment,
   submitAssignment,
-  getAssignmentSubmissions
+  getAssignmentSubmissions,
+  updateAssignmentSubmission
 } = require('../controllers/assignmentController');
 
 const router = express.Router();
 
 // All routes are protected
 router.route('/')
+  .get(protect, getAssignments)  // Both admin and teacher can view assignments
   .post(protect, createAssignment);  // Both admin and teacher can create assignments
 
-router.route('/class/:classId')
-  .get(protect, getAssignmentsByClass);  // Both admin and teacher can view assignments for a class
-
-router.route('/student/:studentId')
-  .get(protect, getAssignmentsByStudent);  // Both admin and teacher can view assignments for a student
-
 router.route('/:id')
+  .get(protect, getAssignmentById)  // Both admin and teacher can view specific assignment
   .put(protect, updateAssignment)  // Both admin and teacher can update
   .delete(protect, admin, deleteAssignment);  // Only admin can delete
 
 router.route('/:id/submit')
-  .put(protect, submitAssignment);  // Both admin and teacher can submit/update submissions
+  .post(protect, submitAssignment);  // Submit assignment
 
 router.route('/:id/submissions')
-  .get(protect, getAssignmentSubmissions);  // Both admin and teacher can view submissions
+  .get(protect, getAssignmentSubmissions);  // Get assignment submissions
+
+router.route('/submissions/:id')
+  .put(protect, updateAssignmentSubmission);  // Update assignment submission
 
 module.exports = router;

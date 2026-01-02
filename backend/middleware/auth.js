@@ -13,7 +13,12 @@ const protect = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_secret_key');
 
       // Get user from the token
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await User.findById(decoded.id);
+      
+      // Remove password from user object before proceeding
+      if (req.user) {
+        delete req.user.password;
+      }
 
       if (!req.user) {
         return res.status(401).json({ message: 'Not authorized, user not found' });
@@ -32,7 +37,12 @@ const protect = async (req, res, next) => {
     // If no access token in header, try to refresh using cookie
     try {
       const decoded = jwt.verify(req.cookies.refreshToken, process.env.JWT_REFRESH_SECRET || 'default_refresh_secret');
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await User.findById(decoded.id);
+      
+      // Remove password from user object before proceeding
+      if (req.user) {
+        delete req.user.password;
+      }
 
       if (!req.user) {
         return res.status(401).json({ message: 'Not authorized, user not found' });
@@ -82,17 +92,17 @@ const canAccessClass = async (req, res, next) => {
       // For teacher-specific routes that require class parameter
       if (req.params.classId) {
         const classId = req.params.classId;
-        if (req.user.assignedClasses.includes(classId)) {
+        if (req.user.assignedClasses.includes(classId.toString())) {
           return next();
         }
       } else if (req.body.class) {
         const classId = req.body.class;
-        if (req.user.assignedClasses.includes(classId)) {
+        if (req.user.assignedClasses.includes(classId.toString())) {
           return next();
         }
       } else if (req.query.classId) {
         const classId = req.query.classId;
-        if (req.user.assignedClasses.includes(classId)) {
+        if (req.user.assignedClasses.includes(classId.toString())) {
           return next();
         }
       }

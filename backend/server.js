@@ -1,8 +1,8 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
+const connectDB = require('./config/db');
 
 // Load environment variables
 dotenv.config();
@@ -23,23 +23,15 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-// Connect to MongoDB
-const connectDB = async () => {
+// Test database connection
+const testDBConnection = async () => {
   try {
-    if (!process.env.MONGODB_URI) {
-      throw new Error('MONGODB_URI environment variable is not set');
-    }
-    
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    await connectDB.query('SELECT NOW()');
+    console.log('Database connection successful');
     return true;
   } catch (error) {
-    console.error(`MongoDB connection error: ${error.message}`);
-    process.exit(1); // Exit if database connection fails
+    console.error('Database connection failed:', error.message);
+    return false;
   }
 };
 
@@ -69,7 +61,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 // Connect to database and start server
-connectDB().then((dbConnected) => {
+testDBConnection().then((dbConnected) => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     if (!dbConnected) {

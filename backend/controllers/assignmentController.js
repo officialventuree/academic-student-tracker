@@ -1,294 +1,254 @@
 const Assignment = require('../models/Assignment');
 const Student = require('../models/Student');
 const Class = require('../models/Class');
-const AdminLog = require('../models/AdminLog');
-const { protect, admin, teacher } = require('../middleware/auth');
+const asyncHandler = require('express-async-handler');
 
-// @desc    Get all assignments for a class
-// @route   GET /api/assignments/class/:classId
+// @desc    Get all assignments
+// @route   GET /api/assignments
 // @access  Private (Admin and Teacher)
-const getAssignmentsByClass = async (req, res) => {
+const getAssignments = asyncHandler(async (req, res) => {
   try {
-    const { classId } = req.params;
-    const { subject, academicYear } = req.query;
-
-    let filter = { class: classId };
+    const { classId, teacherId } = req.query;
     
-    if (subject) filter.subject = subject;
-    if (academicYear) filter.academicYear = academicYear;
-
-    const assignments = await Assignment.find(filter)
-      .populate('class', 'className form subject')
-      .sort({ assignedDate: -1 });
-
-    res.json(assignments);
-  } catch (error) {
-    console.error('Get assignments by class error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc    Get all assignments for a student
-// @route   GET /api/assignments/student/:studentId
-// @access  Private (Admin and Teacher)
-const getAssignmentsByStudent = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { subject, academicYear } = req.query;
-
-    // Get all assignments for the student's class
-    const student = await Student.findById(studentId).populate('class');
-    if (!student) {
-      return res.status(404).json({ message: 'Student not found' });
-    }
-
-    let filter = { class: student.class._id };
+    let assignments;
     
-    if (subject) filter.subject = subject;
-    if (academicYear) filter.academicYear = academicYear;
-
-    const assignments = await Assignment.find(filter)
-      .populate('class', 'className form subject')
-      .sort({ assignedDate: -1 });
-
-    // Add submission status for the specific student
-    const assignmentsWithStatus = assignments.map(assignment => {
-      const submission = assignment.submissions.find(sub => 
-        sub.student.toString() === studentId
-      );
-      
-      return {
-        ...assignment._doc,
-        submission: submission || null
-      };
-    });
-
-    res.json(assignmentsWithStatus);
-  } catch (error) {
-    console.error('Get assignments by student error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// @desc    Create a new assignment
-// @route   POST /api/assignments
-// @access  Private (Admin and Teacher)
-const createAssignment = async (req, res) => {
-  try {
-    const { title, description, class: classId, subject, dueDate, totalMarks, academicYear } = req.body;
-
-    // Verify class exists and user has access (for teachers)
-    const classObj = await Class.findById(classId);
-    if (!classObj) {
-      return res.status(404).json({ message: 'Class not found' });
-    }
-
-    if (req.user.role === 'teacher') {
-      // Check if teacher can access this class
-      if (!req.user.assignedClasses.includes(classId)) {
-        return res.status(403).json({ message: 'Not authorized to access this class' });
+    if (classId) {
+      assignments = await Assignment.findByClass(classId);
+    } else if (teacherId) {
+      assignments = await Assignment.findByTeacher(teacherId);
+    } else {
+      // For admin access - all assignments
+      if (req.user.role === 'admin') {
+        // We would need to implement a method to fetch all assignments
+        // For now, return empty array or implement the method
+        assignments = [];
+      } else {
+        return res.status(403).json({ message: 'Class or teacher ID required' });
       }
     }
-
-    const newAssignment = new Assignment({
-      title,
-      description,
-      class: classId,
-      subject,
-      dueDate,
-      totalMarks,
-      academicYear
-    });
-
-    const createdAssignment = await newAssignment.save();
-
-    // Log admin action if performed by admin
-    if (req.user.role === 'admin') {
-      await AdminLog.create({
-        user: req.user._id,
-        action: 'UPDATE_ASSIGNMENT',
-        entityType: 'Assignment',
-        entityId: createdAssignment._id,
-        details: `Created assignment '${title}' for class ${classObj.className}`,
-        ipAddress: req.ip,
-        userAgent: req.get('User-Agent')
-      });
-    }
-
-    res.status(201).json(createdAssignment);
+    
+    res.json(assignments);
   } catch (error) {
-    console.error('Create assignment error:', error);
+    console.error('Get assignments error:', error);
     res.status(500).json({ message: 'Server error' });
   }
-};
+});
 
-// @desc    Update assignment
-// @route   PUT /api/assignments/:id
+// @desc    Get assignment by ID
+// @route   GET /api/assignments/:id
 // @access  Private (Admin and Teacher)
-const updateAssignment = async (req, res) => {
+const getAssignmentById = asyncHandler(async (req, res) => {
   try {
-    const { title, description, dueDate, totalMarks } = req.body;
-
     const assignment = await Assignment.findById(req.params.id);
+
     if (!assignment) {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    // Check if user can access the class this assignment belongs to
+    res.json(assignment);
+  } catch (error) {
+    console.error('Get assignment error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @desc    Create a new assignment
+// @route   POST /api/assignments
+// @access  Private (Admin and Teacher)
+const createAssignment = asyncHandler(async (req, res) => {
+  try {
+    const { 
+      title, description, classId, subject, dueDate, maxScore 
+    } = req.body;
+
+    // Check if class exists
+    const classObj = await Class.findById(classId);
+
+    if (!classObj) {
+      return res.status(400).json({ message: 'Class not found' });
+    }
+
+    // Check if teacher is assigned to this class (for teacher role)
     if (req.user.role === 'teacher') {
-      if (!req.user.assignedClasses.includes(assignment.class.toString())) {
-        return res.status(403).json({ message: 'Not authorized to access this assignment' });
+      if (!req.user.assignedClasses.includes(classId.toString())) {
+        return res.status(403).json({ message: 'Not authorized to create assignment for this class' });
       }
     }
 
-    // Update assignment fields
-    assignment.title = title || assignment.title;
-    assignment.description = description || assignment.description;
-    assignment.dueDate = dueDate || assignment.dueDate;
-    assignment.totalMarks = totalMarks !== undefined ? totalMarks : assignment.totalMarks;
+    const assignment = await Assignment.create({
+      title,
+      description,
+      classId,
+      subject,
+      dueDate,
+      maxScore,
+      teacherId: req.user.id
+    });
 
-    const updatedAssignment = await assignment.save();
+    res.status(201).json(assignment);
+  } catch (error) {
+    console.error('Create assignment error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
-    const classObj = await Class.findById(assignment.class);
+// @desc    Update an assignment
+// @route   PUT /api/assignments/:id
+// @access  Private (Admin and Teacher)
+const updateAssignment = asyncHandler(async (req, res) => {
+  try {
+    const { 
+      title, description, classId, subject, dueDate, maxScore, isActive 
+    } = req.body;
 
-    // Log admin action if performed by admin
-    if (req.user.role === 'admin') {
-      await AdminLog.create({
-        user: req.user._id,
-        action: 'UPDATE_ASSIGNMENT',
-        entityType: 'Assignment',
-        entityId: updatedAssignment._id,
-        details: `Updated assignment '${updatedAssignment.title}' for class ${classObj.className}`,
-        ipAddress: req.ip,
-        userAgent: req.get('User-Agent')
-      });
+    const assignment = await Assignment.findById(req.params.id);
+
+    if (!assignment) {
+      return res.status(404).json({ message: 'Assignment not found' });
     }
+
+    // Check if teacher is assigned to this class (for teacher role)
+    if (req.user.role === 'teacher') {
+      if (!req.user.assignedClasses.includes(assignment.classId.toString())) {
+        return res.status(403).json({ message: 'Not authorized to update this assignment' });
+      }
+    }
+
+    const updatedAssignment = await Assignment.update(req.params.id, {
+      title: title || assignment.title,
+      description: description || assignment.description,
+      classId: classId || assignment.classId,
+      subject: subject || assignment.subject,
+      dueDate: dueDate || assignment.dueDate,
+      maxScore: maxScore || assignment.maxScore,
+      isActive: isActive !== undefined ? isActive : assignment.isActive
+    });
 
     res.json(updatedAssignment);
   } catch (error) {
     console.error('Update assignment error:', error);
     res.status(500).json({ message: 'Server error' });
   }
-};
+});
 
-// @desc    Delete assignment
+// @desc    Delete an assignment
 // @route   DELETE /api/assignments/:id
-// @access  Private (Admin only)
-const deleteAssignment = async (req, res) => {
+// @access  Private (Admin and Teacher)
+const deleteAssignment = asyncHandler(async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id);
+
     if (!assignment) {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    const classObj = await Class.findById(assignment.class);
+    // Check if teacher is assigned to this class (for teacher role)
+    if (req.user.role === 'teacher') {
+      if (!req.user.assignedClasses.includes(assignment.classId.toString())) {
+        return res.status(403).json({ message: 'Not authorized to delete this assignment' });
+      }
+    }
 
-    await assignment.remove();
-
-    // Log admin action
-    await AdminLog.create({
-      user: req.user._id,
-      action: 'UPDATE_ASSIGNMENT',
-      entityType: 'Assignment',
-      entityId: assignment._id,
-      details: `Deleted assignment '${assignment.title}' for class ${classObj.className}`,
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent')
-    });
+    await Assignment.delete(req.params.id);
 
     res.json({ message: 'Assignment removed' });
   } catch (error) {
     console.error('Delete assignment error:', error);
     res.status(500).json({ message: 'Server error' });
   }
-};
+});
 
-// @desc    Submit assignment for a student
-// @route   PUT /api/assignments/:id/submit
-// @access  Private (Admin and Teacher)
-const submitAssignment = async (req, res) => {
+// @desc    Submit an assignment
+// @route   POST /api/assignments/:id/submit
+// @access  Private (Students)
+const submitAssignment = asyncHandler(async (req, res) => {
   try {
-    const { studentId, score, status, fileUrl } = req.body;
+    const { studentId, score, status, teacherFeedback } = req.body;
 
     const assignment = await Assignment.findById(req.params.id);
+
     if (!assignment) {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    // Check if user can access the class this assignment belongs to
-    if (req.user.role === 'teacher') {
-      if (!req.user.assignedClasses.includes(assignment.class.toString())) {
-        return res.status(403).json({ message: 'Not authorized to access this assignment' });
-      }
+    // Check if student is in the class (this would require additional validation)
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(400).json({ message: 'Student not found' });
     }
 
-    // Check if submission already exists for this student
-    const existingSubmissionIndex = assignment.submissions.findIndex(
-      sub => sub.student.toString() === studentId
-    );
+    const submission = await Assignment.createSubmission({
+      assignmentId: req.params.id,
+      studentId,
+      score: score || null,
+      status: status || 'submitted',
+      teacherFeedback: teacherFeedback || null,
+      teacherId: req.user.id // Assuming teacher is submitting for student
+    });
 
-    if (existingSubmissionIndex > -1) {
-      // Update existing submission
-      assignment.submissions[existingSubmissionIndex].submittedAt = new Date();
-      if (score !== undefined) assignment.submissions[existingSubmissionIndex].score = score;
-      if (status) assignment.submissions[existingSubmissionIndex].status = status;
-      if (fileUrl) assignment.submissions[existingSubmissionIndex].fileUrl = fileUrl;
-    } else {
-      // Add new submission
-      assignment.submissions.push({
-        student: studentId,
-        submittedAt: new Date(),
-        score: score || null,
-        status: status || 'submitted',
-        fileUrl: fileUrl || null
-      });
-    }
-
-    const updatedAssignment = await assignment.save();
-
-    res.json(updatedAssignment);
+    res.status(201).json(submission);
   } catch (error) {
     console.error('Submit assignment error:', error);
     res.status(500).json({ message: 'Server error' });
   }
-};
+});
 
-// @desc    Get assignment submissions for a class
+// @desc    Get assignment submissions
 // @route   GET /api/assignments/:id/submissions
 // @access  Private (Admin and Teacher)
-const getAssignmentSubmissions = async (req, res) => {
+const getAssignmentSubmissions = asyncHandler(async (req, res) => {
   try {
-    const assignment = await Assignment.findById(req.params.id)
-      .populate({
-        path: 'submissions.student',
-        select: 'name studentId'
-      })
-      .populate('class', 'className form subject');
+    const submissions = await Assignment.findSubmissionsByAssignment(req.params.id);
 
-    if (!assignment) {
-      return res.status(404).json({ message: 'Assignment not found' });
-    }
-
-    // Check if user can access the class this assignment belongs to
-    if (req.user.role === 'teacher') {
-      if (!req.user.assignedClasses.includes(assignment.class._id.toString())) {
-        return res.status(403).json({ message: 'Not authorized to access this assignment' });
-      }
-    }
-
-    res.json(assignment);
+    res.json(submissions);
   } catch (error) {
     console.error('Get assignment submissions error:', error);
     res.status(500).json({ message: 'Server error' });
   }
-};
+});
+
+// @desc    Update assignment submission
+// @route   PUT /api/assignments/submissions/:id
+// @access  Private (Admin and Teacher)
+const updateAssignmentSubmission = asyncHandler(async (req, res) => {
+  try {
+    const { score, status, teacherFeedback } = req.body;
+
+    const submission = await Assignment.findSubmissionById(req.params.id);
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    // Check if teacher is assigned to the class (for teacher role)
+    const assignment = await Assignment.findById(submission.assignmentId);
+    if (req.user.role === 'teacher') {
+      if (!req.user.assignedClasses.includes(assignment.classId.toString())) {
+        return res.status(403).json({ message: 'Not authorized to update this submission' });
+      }
+    }
+
+    const updatedSubmission = await Assignment.updateSubmission(req.params.id, {
+      score: score !== undefined ? score : submission.score,
+      status: status || submission.status,
+      teacherFeedback: teacherFeedback || submission.teacherFeedback
+    });
+
+    res.json(updatedSubmission);
+  } catch (error) {
+    console.error('Update assignment submission error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 module.exports = {
-  getAssignmentsByClass,
-  getAssignmentsByStudent,
+  getAssignments,
+  getAssignmentById,
   createAssignment,
   updateAssignment,
   deleteAssignment,
   submitAssignment,
-  getAssignmentSubmissions
+  getAssignmentSubmissions,
+  updateAssignmentSubmission
 };
