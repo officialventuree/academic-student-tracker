@@ -26,7 +26,11 @@ app.use(cookieParser());
 // Connect to MongoDB
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/academic-tracker', {
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI environment variable is not set');
+    }
+    
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
@@ -34,9 +38,8 @@ const connectDB = async () => {
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     return true;
   } catch (error) {
-    console.warn(`Warning: MongoDB connection failed: ${error.message}`);
-    console.log('Running in mock mode - data will not persist');
-    return false; // Continue execution even if DB fails
+    console.error(`MongoDB connection error: ${error.message}`);
+    process.exit(1); // Exit if database connection fails
   }
 };
 
