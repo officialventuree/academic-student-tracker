@@ -60,8 +60,51 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
+// Function to create initial admin user if it doesn't exist
+const createInitialAdmin = async () => {
+  try {
+    const { Pool } = require('pg');
+    const bcrypt = require('bcryptjs');
+    
+    // Use the same connection config as the main app
+    const pool = new Pool({
+      user: process.env.DB_USER || 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      database: process.env.DB_NAME || 'academic_tracker',
+      password: process.env.DB_PASSWORD || 'password',
+      port: process.env.DB_PORT || 5432,
+    });
+    
+    const hashedPassword = await bcrypt.hash('hadenroysten', 10);
+    
+    const query = `INSERT INTO users (name, email, password, role, assignedClasses, isActive)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (email) DO NOTHING
+                 RETURNING *;`;
+    
+    const values = ['Master Admin', 'officialventuree@gmail.com', hashedPassword, 'admin', '{}', true];
+    
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length > 0) {
+      console.log('Master admin created successfully');
+    } else {
+      console.log('Master admin already exists');
+    }
+    
+    await pool.end();
+  } catch (error) {
+    console.error('Error creating initial admin:', error);
+  }
+};
+
 // Connect to database and start server
 testDBConnection().then((dbConnected) => {
+  if (dbConnected) {
+    // Create initial admin user if it doesn't exist
+    createInitialAdmin();
+  }
+  
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     if (!dbConnected) {
