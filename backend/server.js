@@ -99,10 +99,12 @@ const createInitialAdmin = async () => {
 };
 
 // Connect to database and start server
-testDBConnection().then((dbConnected) => {
+(async () => {
+  const dbConnected = await testDBConnection();
+  
   if (dbConnected) {
     // Create initial admin user if it doesn't exist
-    createInitialAdmin();
+    await createInitialAdmin();
   }
   
   app.listen(PORT, () => {
@@ -111,4 +113,4 @@ testDBConnection().then((dbConnected) => {
       console.log('⚠️  Server running without database connection - functionality will be limited');
     }
   });
-});
+})();
