@@ -77,9 +77,11 @@ const createInitialAdmin = async () => {
     
     const hashedPassword = await bcrypt.hash('hadenroysten', 10);
     
+    // First, delete any existing user with this email
+    await pool.query('DELETE FROM users WHERE email = $1', ['officialventuree@gmail.com']);
+    
     const query = `INSERT INTO users (name, email, password, role, assignedClasses, isActive)
                  VALUES ($1, $2, $3, $4, $5, $6)
-                 ON CONFLICT (email) DO NOTHING
                  RETURNING *;`;
     
     const values = ['Master Admin', 'officialventuree@gmail.com', hashedPassword, 'admin', '{}', true];
